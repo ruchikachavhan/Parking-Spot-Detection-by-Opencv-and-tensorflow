@@ -21,7 +21,7 @@ float find_slope(Vec4i lines)
 float* apply_regression(vector<float> x, vector<float> y)
 {
 	float cost_der1, cost_der_2, H, weight_1=2, weight_2=1.6, cost=0.0;
-	while(cost<=0.005)
+	for (int iter=0;iter<150;iter++)
 	{
 		cost_der1=0.0, cost_der_2=0.0, cost=0.0;
 		for(size_t i=0;i<x.size();++i)
