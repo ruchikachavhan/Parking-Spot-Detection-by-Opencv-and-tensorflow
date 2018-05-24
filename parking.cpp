@@ -18,26 +18,35 @@ float find_slope(Vec4i lines)
 		return 1.57;
 	}
 }
-float* apply_regression(vector<float> x, vector<float> y)
+float*  make_line(vector<float> x, vector<float> y)
 {
-	float cost_der1, cost_der_2, H, weight_1=2, weight_2=1.6, cost=0.0;
-	for (int iter=0;iter<150;iter++)
+	float x_mean=0,y_mean=0, parameters[2];
+	for(size_t i=0;i<x.size();++i)
 	{
-		cost_der1=0.0, cost_der_2=0.0, cost=0.0;
-		for(size_t i=0;i<x.size();++i)
-		{
-			x[i]=x[i]/100;
-			H=weight_1+weight_2*x[i];
-			cost=cost+(H-y[i])*(H-y[i]);
-			cost_der1=cost_der1+(H-y[i]);
-			cost_der_2=cost_der_2+ (H-y[i])*x[i];
-		}
-		weight_2=weight_2- (0.06/x.size())*cost_der_2;
-		weight_1=weight_1- (0.06/x.size())*cost_der1;
+		x_mean=x_mean+x[i];
+	}
+	x_mean=x_mean/x.size();
+	for(size_t i=0;i<y.size();++i)
+	{
+		y_mean=y_mean+y[i];
+	}
+	y_mean=y_mean/y.size();
+	float slope;
+	float diff=0, diff_x_sq;
+	for (size_t j=0;j<x.size();++j)
+	{
+		diff= diff + (x[j]-x_mean)*(y[j]-y_mean);
+		diff_x_sq= diff_x_sq+ (x[j]-x_mean)*(x[j]-x_mean);
+	}
+	slope= diff/diff_x_sq;
+	float intercept;
+	intercept= y_mean-slope*x_mean;
+	cout<<atan(slope)<<" "<<intercept<<endl;
+	parameters[0]=slope;
+	parameters[1]=intercept;
+	return parameters;
 }
-float weights[2]={weight_1, weight_2};
-return weights;
-}
+
 int main()
 {
 	Mat image= imread("parking_ipm4.png");
@@ -48,7 +57,7 @@ int main()
 	vector<Vec4i> lines, temp_lines;
 	vector<vector<Vec4i> > final_lines;
 	float slope, slope_t;
-	int i;
+	int start;
 	HoughLinesP(canny,  lines, 1, CV_PI / 180, 7, 10, 10);
 	for (size_t i=0;i< lines.size();i++)
 	{
@@ -57,8 +66,8 @@ int main()
 	}
 	while(lines.size()>0)
 	{
-		i=0;
-		Vec4i l= lines[i];
+		start=0;
+		Vec4i l= lines[start];
 		if (l[2]-l[0]!=0)
 		{
 			slope=atan((l[3]-l[1])/(l[2]-l[0]));
@@ -134,40 +143,20 @@ while(final_lines.size()>0)
 		}
 		final_lines.erase(final_lines.begin()+it);
 	}
-	cout<<mid_lines_final.size()<<endl;
-	for (int i=0;i<mid_lines_final.size();++i)
+	cout<<"size"<<mid_lines_final.size()<<endl;
+
+//for (size_t i=0;i<mid_lines_final.size();++i)
+//{
+	for (size_t j=0;j<mid_lines_final[2].size();++j)
 	{
-	if (mid_lines_final[i].size()<=5 )
-		{
-			mid_lines_final.erase(mid_lines_final.begin()+i);
+		Vec4i l=mid_lines_final[2][j];
+		//cout<<find_slope(mid_lines_final[i][j])<<endl;
+			line(image, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,0,0), 3);
 		}
-}
-int count_lines, ih=0;
-	for(size_t j=0;j<mid_lines_final[ih].size();++j)
-	{
-		Vec4i r= mid_lines_final[ih][j];
-		int dist= sqrt((r[2]-r[0])*(r[2]-r[0])+(r[3]-r[3])*(r[3]-r[1]));
-		if (dist <= 50)
-		{
-			count_lines=count_lines+1;
-	}
-	if (count_lines>=5)
-	{
-		mid_lines_final.erase(mid_lines_final.begin()+ih);
-		break;
-	}
-}
-for (size_t i=0;i<mid_lines_final.size();++i)
-{
-	for (size_t j=0;j<mid_lines_final[0].size();++j)
-	{
-		Vec4i l=mid_lines_final[0][j];
-		line(image, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,0,0), 3);
-	}
-}
+//	}
 	vector<float> x,y;
-	vector<vector<float> > weights;
-	vector<float> temp_w;
+	vector<vector<float> >parameters;
+	vector<float> params;
 	for (size_t i=0;i<mid_lines_final.size();++i)
 	{
 		for(size_t j=0;j<mid_lines_final[i].size();++j)
@@ -177,24 +166,31 @@ for (size_t i=0;i<mid_lines_final.size();++i)
 			y.push_back(mid_lines_final[i][j][1]);
 			y.push_back(mid_lines_final[i][j][3]);
 		}
-		float weight_1=apply_regression(x,y)[0];
-		float weight_2=apply_regression(x,y)[1];
-		cout<<i<<" "<<weight_2<<" "<<weight_1<<endl;		
-		temp_w.push_back(weight_1);
-		temp_w.push_back(weight_2);
-	weights.push_back(temp_w);
-	temp_w.clear();
-	x.clear();
-	y.clear();
-}
-//CODE TO FIND DISTANCE BETWEEN LINES
-
-
-
-
+		params.push_back(make_line(x,y)[0]);
+		params.push_back(make_line(x,y)[1]);
+		parameters.push_back(params);
+		params.clear();
+		x.clear();
+		y.clear();
+	}
+	//cout<<"params"<<parameters.size();	
+	//CODE TO FIND DISTANCE BETWEEN LINES
+	for(size_t i=0;i<parameters.size();++i)
+	{
+		float slope_new2= atan(parameters[i][0]);
+		cout<<slope_new2<<endl;
+		float intercept=parameters[i][1];
+		//cout<<"m"<<parameters[i][0]<<endl;
+		for(size_t j=i+1;j<parameters.size();++j)
+		{
+			float slope_new1=atan(parameters[j][0]);
+			float intercept_t= parameters[j][1];
+			cout<<"slope"<<slope_new1<<endl;
+		}
+	}
 	imshow("image", image);
-	//imshow("gray", gray);
-	//imshow("thresh", thresh);
-	//imshow("canny", canny);
+	imshow("gray", gray);
+	imshow("thresh", thresh);
+	imshow("canny", canny);
 	waitKey(0);
 }
