@@ -18,7 +18,18 @@ float find_slope(Vec4i lines)
 		return 1.57;
 	}
 }
-float*  make_line(vector<float> x, vector<float> y)
+float max(float x, float y)
+{
+	if(x>=y)
+	{
+		return x;
+	}
+	else
+	{
+		return y;
+	}
+}
+float  make_line(vector<float> x, vector<float> y)
 {
 	float x_mean=0,y_mean=0, parameters[2];
 	for(size_t i=0;i<x.size();++i)
@@ -41,10 +52,8 @@ float*  make_line(vector<float> x, vector<float> y)
 	slope= diff/diff_x_sq;
 	float intercept;
 	intercept= y_mean-slope*x_mean;
-	cout<<atan(slope)<<" "<<intercept<<endl;
-	parameters[0]=slope;
-	parameters[1]=intercept;
-	return parameters;
+	//cout<<atan(slope)*180/3.14<<" "<<intercept<<endl;
+	return slope;
 }
 
 int main()
@@ -144,19 +153,33 @@ while(final_lines.size()>0)
 		final_lines.erase(final_lines.begin()+it);
 	}
 	cout<<"size"<<mid_lines_final.size()<<endl;
-
+for (size_t i=0;i<mid_lines_final.size();++i)
+{
+	if(mid_lines_final[i].size()<=4)
+	{
+		mid_lines_final.erase(mid_lines_final.begin()+i);
+		i=-1;
+	}
+}
+cout<<"size"<<mid_lines_final.size()<<endl;
 //for (size_t i=0;i<mid_lines_final.size();++i)
 //{
-	for (size_t j=0;j<mid_lines_final[2].size();++j)
+	for (size_t j=0;j<mid_lines_final[3].size();++j)
 	{
-		Vec4i l=mid_lines_final[2][j];
+		Vec4i l=mid_lines_final[3][j];
+		//cout<<find_slope(mid_lines_final[i][j])<<endl;
+			line(image, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,0,255), 3);
+	}
+	for (size_t j=0;j<mid_lines_final[4].size();++j)
+	{
+		Vec4i l=mid_lines_final[4][j];
 		//cout<<find_slope(mid_lines_final[i][j])<<endl;
 			line(image, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,0,0), 3);
 		}
 //	}
 	vector<float> x,y;
-	vector<vector<float> >parameters;
-	vector<float> params;
+	vector<float> params, intercepts;
+	float x_mean, y_mean,slopes;
 	for (size_t i=0;i<mid_lines_final.size();++i)
 	{
 		for(size_t j=0;j<mid_lines_final[i].size();++j)
@@ -166,26 +189,38 @@ while(final_lines.size()>0)
 			y.push_back(mid_lines_final[i][j][1]);
 			y.push_back(mid_lines_final[i][j][3]);
 		}
-		params.push_back(make_line(x,y)[0]);
-		params.push_back(make_line(x,y)[1]);
-		parameters.push_back(params);
-		params.clear();
+		x_mean=0, y_mean=0;
+		for(size_t i=0;i<x.size();++i)
+	{
+		x_mean=x_mean+x[i];
+	}
+	x_mean=x_mean/x.size();
+	for(size_t i=0;i<y.size();++i)
+	{
+		y_mean=y_mean+y[i];
+	}
+	y_mean=y_mean/y.size();
+	slopes=make_line(x,y);
+	intercepts.push_back(y_mean-x_mean*slopes);
+		params.push_back(slopes);
 		x.clear();
 		y.clear();
 	}
-	//cout<<"params"<<parameters.size();	
-	//CODE TO FIND DISTANCE BETWEEN LINES
-	for(size_t i=0;i<parameters.size();++i)
+	float slope_1, slope_2,distance,s;
+	for (size_t j=0;j<params.size();++j)
 	{
-		float slope_new2= atan(parameters[i][0]);
-		cout<<slope_new2<<endl;
-		float intercept=parameters[i][1];
-		//cout<<"m"<<parameters[i][0]<<endl;
-		for(size_t j=i+1;j<parameters.size();++j)
+		slope_1= abs(atan(params[j]));
+		for(size_t k=j+1;k<params.size();++k)
 		{
-			float slope_new1=atan(parameters[j][0]);
-			float intercept_t= parameters[j][1];
-			cout<<"slope"<<slope_new1<<endl;
+			slope_2=abs(atan(params[k]));
+			if(abs(slope_1-slope_2)<=0.35)
+			{
+				cout<<"j" <<j<<" "<<"k"<<" "<<k<<" "<<"slope"<<slope_1*180/3.14<<" "<<slope_2*180/3.14<<" "<<abs(intercepts[j]-intercepts[k])<<endl;
+				s=max(params[j],params[k]);
+				distance=abs(intercepts[j]-intercepts[k])/sqrt(1+s*s); 
+		
+			cout<<"distance"<<" "<<distance<<endl;
+			}
 		}
 	}
 	imshow("image", image);
