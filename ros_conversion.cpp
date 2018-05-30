@@ -1,18 +1,61 @@
+#include "image_properties.h"
+
+//ros libraries
 #include "ros/ros.h"
 #include "sensor_msgs/LaserScan.h"
 #include "nav_msgs/OccupancyGrid.h"
 #include "nav_msgs/Path.h"
 #include "std_msgs/Int8MultiArray.h"
 #include <std_msgs/Float64.h>
+#include <std_msgs/Int8.h>
+
+//C++ libraries
 #include <iostream>
-#include "opencv2/core/core.hpp"
-#include "opencv2/imgproc/imgproc.hpp"
-#include "opencv2/highgui/highgui.hpp"
 #include <vector>
-#include <cmath>
+#include <math.h>
+#include <string>
+#include <fstream>
+#include <algorithm>
+
+//OpenCV libraries
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/opencv.hpp>
+#include <stdio.h>
+#include <utility>
+#include "opencv2/features2d.hpp"
+#include "opencv2/imgcodecs.hpp"
+//#include <cuda.h>
+
+#include "opencv2/calib3d/calib3d.hpp"
 using namespace cv;
 using namespace std;
+
 namespace enc = sensor_msgs::image_encodings;
+
+int tau=7, thresh=40;
+
+string WINDOW = "Occupancy-Gird";
+
+ros::Publisher pub_Lanedata;
+ros::Publisher path_pub;
+ros::Publisher pub;
+
+Mat Final_Parking_Filter;
+
+int area = 15;
+
+//logic used for sorting points based on Y-coordinate
+struct myclass {
+    bool operator() (vector<cv::Point> pt1, vector<cv::Point> pt2) { return (pt1[0].y < pt2[0].y);}
+} myobject;
+
+//logic for sorting
+bool less_by_y(const cv::Point& lhs, const cv::Point& rhs){
+  return lhs.y < rhs.y;
+}
+
 float find_slope(Vec4i lines)
 {
 	if (lines[2]-lines[0]!=0)
@@ -63,9 +106,10 @@ float  make_line(vector<float> x, vector<float> y)
 
 int detect_number_ofParkingSLots(Mat image)
 {
-	Mat gray, canny, thresh;
-	cvtColor(image, gray, CV_BGR2GRAY);
-	inRange(gray, 100, 200, thresh);
+	Mat canny, thresh;
+	// cvtColor(image, gray, CV_BGR2GRAY);
+	// inRange(gray, 100, 200, thresh);
+	thresh = image;
 	Canny(thresh, canny,100, 300,3);
 	vector<Vec4i> lines, temp_lines;
 	vector<vector<Vec4i> > final_lines;
@@ -231,31 +275,176 @@ cout<<"size"<<mid_lines_final.size()<<endl;
 	}
 	cout<<"Number of parking slot "<<" "<<number_parking_slot<<endl;
 	imshow("image", image);
-	imshow("gray", gray);
-	imshow("thresh", thresh);
+	// imshow("gray", gray);
+	// imshow("thresh", thresh);
 	imshow("canny", canny);
 	//waitKey(0);
 	return number_parking_slot;
 }
+//Input: Grayscale of IPM image
+//Output: Binary image containing lane candidate points
+//Applies step-edge kernel with paramters "tau" (width of lane ion pixels) and "thresh" (thresholding for the step-edge-kernel score of every pixel) 
+Mat parking_filter_image(Mat src){
+    namedWindow(WINDOW,CV_WINDOW_AUTOSIZE);
+    createTrackbar("tau",WINDOW, &tau, 100);
+    tau = getTrackbarPos("tau",WINDOW);
+    createTrackbar("thresh",WINDOW, &thresh, 255);
+    thresh = getTrackbarPos("thresh",WINDOW);
+
+    Mat Score_Image_row=Mat::zeros(src.rows, src.cols, CV_8U);
+    Mat binary_inliers_image_row=Mat::zeros(src.rows, src.cols, CV_8U);
+
+    for(int j=0; j<src.rows; j++){
+        unsigned char* ptRowSrc = src.ptr<uchar>(j);
+        unsigned char* ptRowSI = Score_Image_row.ptr<uchar>(j);
+	
+        //Step-edge kernel
+        for(int i = tau; i< src.cols-tau; i++){
+            if(ptRowSrc[i]!=0){
+                int aux = 2*ptRowSrc[i];
+                aux += -ptRowSrc[i-tau];
+                aux += -ptRowSrc[i+tau];
+                aux += -2*abs((int)(ptRowSrc[i-tau]-ptRowSrc[i+tau]));
+                aux = (aux<0)?(0):(aux);
+                aux = (aux>255)?(255):(aux);
+
+                ptRowSI[i] = (unsigned char)aux;
+            }
+        }
+    }
+
+    Mat Score_Image_col=Mat::zeros(src.rows, src.cols, CV_8U);
+    Mat binary_inliers_image_col=Mat::zeros(src.rows, src.cols, CV_8U);
+    for(int j=0; j<src.cols; j++){
+        for(int i = tau; i< src.rows-tau; i++){
+            if(src.at<Vec3b>(i,j)[0]!=0){
+				int aux = 2*src.at<Vec3b>(i,j)[0];
+				aux += -src.at<Vec3b>(i-tau,j)[0];
+				aux += -src.at<Vec3b>(i+tau,j)[0];
+                aux += -2*abs(src.at<Vec3b>(i-tau,j)[0]-src.at<Vec3b>(i+tau,j)[0]);
+				aux = (aux<0)?(0):(aux);
+                aux = (aux>255)?(255):(aux);
+				Score_Image_col.at<Vec3b>(i,j)[0] = aux;
+            }
+        }
+    }
+
+    //Thresholding to form binary image. White points are lane candidate points
+    binary_inliers_image_row=Score_Image_row>thresh;
+    binary_inliers_image_col=Score_Image_col>thresh;
+    Mat binary_inliers_image;
+    bitwise_or(binary_inliers_image_row,binary_inliers_image_col,binary_inliers_image);
+    return binary_inliers_image;
+}
+
+void parking_box(const sensor_msgs::ImageConstPtr& msg){
+
+    //Extract image from message
+    cout<<"enter parking_box"<<endl;
+    cv_bridge::CvImageConstPtr cv_ptr;
+    try
+    {
+        if (enc::isColor(msg->encoding))
+            cv_ptr = cv_bridge::toCvShare(msg, enc::BGR8);
+        else
+            cv_ptr = cv_bridge::toCvShare(msg, enc::MONO8);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
+    }
+    //src is 500X600. Since lane_filter works better if the image is larger, we convert it to 200X240 only after passing it through lane_filter
+    Mat gray,src = cv_ptr->image;
+    cvtColor(src, gray, CV_BGR2GRAY);
+    cv::imshow("Original",src);
+
+    //Remove grid from ipm
+	for(int i=0;i<gray.rows;i=i+gray.rows/12){
+                for(int j=0;j<gray.cols;j++){
+                        gray.at<Vec3b>(i,j)[0]=0;
+                        gray.at<Vec3b>(i,j)[1]=0;
+                        gray.at<Vec3b>(i,j)[2]=0;
+                }
+        }
+
+        for(int i=0;i<gray.cols;i=i+gray.cols/10){
+                for(int j=0;j<gray.rows;j++){
+                        gray.at<Vec3b>(j,i)[0]=0;
+                        gray.at<Vec3b>(j,i)[1]=0;
+                        gray.at<Vec3b>(j,i)[2]=0;
+                }
+        }
+
+    cv::imshow("Gray",gray);
+    waitKey(1);
+    //To check if we get an image
+    if(gray.rows>0){
+        //lane_filter takes grayscale image as input
+        Mat src2=parking_filter_image(gray);
+	Final_Parking_Filter = Mat::zeros(src2.rows, src2.cols, CV_8UC1);
+        
+        int dilation_size=1;
+        Mat element = getStructuringElement( MORPH_RECT,
+                                           Size( 2*dilation_size + 1, 2*dilation_size+1 ),
+                                           Point( dilation_size, dilation_size ) );
+        
+        imshow("Parking filter",src2);
+        //dilating to merge nearby lane blobs and prevent small lane blobs from disappearing when the image is down-sized
+        dilate( src2,src2, element );
+
+        //Area thresholding
+	std::vector<std::vector<Point> > contour_area_threshold;
+	std::vector<Vec4i> hierarchy;
+cout<<"o"<<" "<<endl;
+        findContours(src2, contour_area_threshold, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_NONE);
+cout<<"p"<<endl;
+        createTrackbar("area",WINDOW, &area, 100);
+        area = getTrackbarPos("area",WINDOW);
+
+        for (int i = 0; i < contour_area_threshold.size(); ++i)
+        {
+            if (contourArea(contour_area_threshold[i]) >= area)
+            {
+                drawContours(Final_Parking_Filter, contour_area_threshold, i, Scalar(255),-1);
+            }
+        }
+
+        imshow("Final_right",Final_Parking_Filter);
+		std_msgs::Int8 msg;
+
+		msg.data= detect_number_ofParkingSLots(Final_Parking_Filter);
+        //sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", Final_Parking_Filter).toImageMsg();
+        pub.publish(msg);
+        //Occupancy grid is of size 200X400 where 20 pixels corresponds to 1metre
+        //So we resize the image by half and add 160 pixels padding to the top
+        //resize(Final_Parking_Filter,Final_Parking_Filter,Size(200,240),CV_INTER_LINEAR);
+        //copyMakeBorder(Final_Parking_Filter,Final_Parking_Filter,160,0,0,0,BORDER_CONSTANT,Scalar(0));
+        //waitkey required for displaying images (imshow)
+        waitKey(1);
+    }
+}
+
 int main(int argc, char **argv)
 {
-    
-    
     ros::init(argc, argv, "Parking");
     ros::NodeHandle nh;
-    Mat example= imread("parking_ipm4.png")
+    Mat example= imread("parking_ipm4.png");
     image_transport::ImageTransport it(nh);
 
+    cout<<"1"<<endl;
     image_transport::Subscriber sub_left = it.subscribe("/camera/left_ipm", 1, parking_box);    
-    image_transport::Publisher parking= it.advertise("/camera/parking", 1);
+    //image_transport::Publisher parking= it.advertise("/camera/parking", 1);
+    cout<<"2"<<endl;
+    
+    pub = nh.advertise <std_msgs::Int8>("/numbers",10);
 
     ros::Rate loop_rate(10);
     
     while(ros::ok())
     {   
         ros::spinOnce();
-        //sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", Final_Parking_Filter).toImageMsg();
-        parking.publish(detect_number_ofParkingSLots(example));
+
 	loop_rate.sleep();
     }
     ROS_INFO("parking");
