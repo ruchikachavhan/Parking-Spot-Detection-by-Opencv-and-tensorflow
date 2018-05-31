@@ -77,11 +77,11 @@ int main()
 	float slope, slope_t;
 	int start;
 	HoughLinesP(canny,  lines, 1, CV_PI / 180, 7, 10, 10);
-	for (size_t i=0;i< lines.size();i++)
-	{
-		Vec4i l=lines[i];
-		line(image, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,255,0), 3);
-	}
+	// for (size_t i=0;i< lines.size();i++)
+	// {
+	// 	Vec4i l=lines[i];
+	// 	line(image, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0,255,0), 3);
+	// }
 	while(lines.size()>0)
 	{
 		start=0;
@@ -258,9 +258,69 @@ cout<<"size"<<mid_lines_final.size()<<endl;
 				//cout<<abs(mid_lines_final[k][0][1]-slope_1*minx+intercepts[j]-distance)<<endl;
 				float dd= check_for_error(mid_lines_final[k][0][1],slope_1*minx+intercepts[j]-distance, slope_1*mid_lines_final[j][0][0]+intercepts[j] ) ;
 				line(image, Point(minx,slope_1*minx+intercepts[j]-dd), Point(maxx,slope_1*maxx+intercepts[j]-dd), Scalar(255,255,255), 3);
-			cout<<"distance"<<" "<<dd<<endl;
+				cout<<"distance"<<" "<<dd<<endl;
+				float slope_perp = -1/max(slope_1, slope_2);
+				line(image, Point((minx+maxx)/2, slope_perp*(minx+maxx)/2), Point((minx+maxx)/2, slope_perp*(minx+maxx)/2-distance), Scalar(255,255,255), 3);
+			}
+				// DRAWING PERPENDICULAR LINES
+				if(abs(slope_1-slope_2)<=0.9 && slope_2*180/3.14>80)
+			{
+				cout<<"found"<<endl;
+				// for (size_t y=0;y<mid_lines_final[j].size();++y)
+				// {
+				// 	line(image, Point(mid_lines_final[j][y][0],mid_lines_final[j][y][1]),  Point(mid_lines_final[j][y][2],mid_lines_final[j][y][3]), Scalar(255,255,255), 3);
+				// }
+				//cout<<mid_lines_final[j][0][0]<<" "<<slope_1*mid_lines_final[j][0][0]+intercepts[j]<<" "<<mid_lines_final[j][1][2]<<" "<<slope_1*mid_lines_final[j][1][2]+intercepts[j]<<endl;
+				//line(image, Point(mid_lines_final[j][0][0], slope_1*mid_lines_final[j][0][0]+intercepts[j]), Point(mid_lines_final[j][1][2], slope_1*mid_lines_final[j][1][2]+intercepts[j]), Scalar(0,0,255), 2);
+				//finding minimum and maximum x coordinates of lines
+				float miny=image.rows, maxy=0.0;
+				for (int h=0;h<mid_lines_final[k].size();++h)
+				{
+						if(miny>mid_lines_final[k][h][0])
+						{
+							miny=mid_lines_final[k][h][0];
+						}
+				}
+				for (int h=0;h<mid_lines_final[k].size();++h)
+				{
+						if(maxy<mid_lines_final[k][h][0])
+						{
+							maxy=mid_lines_final[k][h][0];
+						}
+				}
+				float minx1=image.cols, maxx1=0.0;
+				for (int h=0;h<mid_lines_final[k].size();++h)
+				{
+						if(minx1>mid_lines_final[k][h][0])
+						{
+							minx1=mid_lines_final[k][h][0];
+						}
+				}
+				for (int h=0;h<mid_lines_final[k].size();++h)
+				{
+						if(maxx1<mid_lines_final[k][h][0])
+						{
+							maxx1=mid_lines_final[k][h][0];
+						}
+				}
+				cout<<max(slope_2, slope_1)*minx1+intercepts[k]<<" "<<max(slope_2, slope_1)*maxx1+intercepts[k]<<endl;
+				//line(image, Point(minx1, miny), Point(minx1, maxy), Scalar(255,255,255), 3);
+				Point p1,p2;
+				line(image, Point(minx1, max(slope_2, slope_1)*minx1+intercepts[k]), Point(maxx1, max(slope_2, slope_1)*maxx1+intercepts[k]), Scalar(255,255,2552), 3);
+				if(max(slope_2, slope_1)*minx1+intercepts[k]> image.rows)
+				{
+					p1.x= minx1;
+					p1.y=0;
+				}
+				if(max(slope_2, slope_1)*maxx1+intercepts[k]>image.rows)
+				{
+					p2.x= maxx1;
+					p2.y=image.rows;
+				}
+				line(image,p1, p2, Scalar(255,255,255),3);
 			}
 		}
+		
 	}
 	imshow("image", image);
 	imshow("gray", gray);
