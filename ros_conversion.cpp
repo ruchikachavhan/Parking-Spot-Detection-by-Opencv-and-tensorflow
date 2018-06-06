@@ -34,6 +34,8 @@ using namespace std;
 
 namespace enc = sensor_msgs::image_encodings;
 
+////// READ FROM LINE 408
+
 int tau=7, thresh=40;
 
 string WINDOW = "Occupancy-Gird";
@@ -41,9 +43,9 @@ string WINDOW = "Occupancy-Gird";
 ros::Publisher pub_Lanedata;
 ros::Publisher path_pub;
 ros::Publisher pub;
-
+int frame=0;
 Mat Final_Parking_Filter;
-
+vector<Mat> frames;
 int area = 15;
 
 //logic used for sorting points based on Y-coordinate
@@ -82,10 +84,8 @@ float check_for_error(float distance, float min_y, float max_y)
 {
 	if (abs(distance-min_y)>=5)
 	{
-		cout<<"yes"<<endl;
 		distance= abs(max_y-distance);
 	}
-	cout<<"d"<<distance<<endl;
 	return distance;
 }
 float  make_line(vector<float> x, vector<float> y)
@@ -123,10 +123,14 @@ float correction_check(float x, float y)
 	{return x;
 	}
 }
+float find_lengthofLine(Vec4i line)
+{
+	return (sqrt((line[3]-line[1])*(line[3]-line[1])+ (line[2]-line[0])*(line[2]-line[0])));
+}
 Mat detect_ParkingSLots(Mat image)
 {
 	//imshow("asdf", image);
-	Mat canny, thresh;
+	Mat canny, thresh, canny_1;
 	// cvtColor(image, gray, CV_BGR2GRAY);
 	// inRange(gray, 100, 200, thresh);
 	Mat img(image.rows,image.cols, CV_8UC3, Scalar::all(0));
@@ -186,7 +190,7 @@ Mat detect_ParkingSLots(Mat image)
 			final_lines.erase(final_lines.begin()+i);
 		}
 	}
-	cout<<"final_lines"<<final_lines.size()<<endl;
+	//cout<<"final_lines"<<final_lines.size()<<endl;
 	int it=0,jt;
 	//clustering lines according to midpoint
 	while(final_lines.size()>0)
@@ -286,19 +290,19 @@ Mat detect_ParkingSLots(Mat image)
 		for(size_t k=j+1;k<params.size();++k)
 		{
 			slope_2=abs(atan(params[k]));
-			if(abs(slope_1-slope_2)<=0.35 && slope_1*180/3.14< 30 && slope_1*180/3.14>0 )
+			if(abs(slope_1-slope_2)<=0.087 && slope_1*180/3.14< 5 && slope_1*180/3.14>0 &&slope_2*180/3.14< 5 )
 			{
 				// for (size_t y=0;y<mid_lines_final[j].size();++y)
 				// {
 				// 	line(image, Point(mid_lines_final[j][y][0],mid_lines_final[j][y][1]),  Point(mid_lines_final[j][y][2],mid_lines_final[j][y][3]), Scalar(255,255,255), 3);
 				// }
-				cout<<"IN HERE"<<endl;
-				cout<<mid_lines_final[j][0][0]<<" "<<slope_1*mid_lines_final[j][0][0]+intercepts[j]<<" "<<mid_lines_final[j][1][2]<<" "<<slope_1*mid_lines_final[j][1][2]+intercepts[j]<<endl;
+				//cout<<"IN HERE"<<endl;
+				//cout<<mid_lines_final[j][0][0]<<" "<<slope_1*mid_lines_final[j][0][0]+intercepts[j]<<" "<<mid_lines_final[j][1][2]<<" "<<slope_1*mid_lines_final[j][1][2]+intercepts[j]<<endl;
 				float P1, P2;
 				//line(image, Point(mid_lines_final[j][0][0], slope_1*mid_lines_final[j][0][0]+intercepts[j]), Point(mid_lines_final[j][1][2], slope_1*mid_lines_final[j][1][2]+intercepts[j]), Scalar(0,0,255), 2);
 				//finding minimum and maximum x coordinates of lines
-				float minx=image.cols, maxx=0.0;
-				for (int h=0;h<mid_lines_final[j].size();++h)
+				float minx=mid_lines_final[j][0][0], maxx=mid_lines_final[j][0][0];
+				for (int h=1;h<mid_lines_final[j].size();++h)
 				{
 						if(minx>mid_lines_final[j][h][0])
 						{
@@ -306,7 +310,7 @@ Mat detect_ParkingSLots(Mat image)
 							P1=j;
 						}
 				}
-				for (int h=0;h<mid_lines_final[j].size();++h)
+				for (int h=1;h<mid_lines_final[j].size();++h)
 				{
 						if(maxx<mid_lines_final[j][h][0])
 						{
@@ -327,48 +331,39 @@ Mat detect_ParkingSLots(Mat image)
 				//cout<<min(slope_1, slope_2)<<endl;
 				float correction=correction_check(mid_lines_final[P2][0][1],slope_1*mid_lines_final[P2][0][0]+intercepts[P2] );
 				float correction_m=correction_check(mid_lines_final[P1][0][1],slope_1*mid_lines_final[P1][0][0]+intercepts[P1] );
+				//cout<<minx<<" "<<correction_m<<" "<<maxx<<" "<<correction<<endl;
+				if(abs(correction-correction_m)<10)
+				{
 				line(img, Point(minx, correction_m), Point(maxx, correction), Scalar(255,255,255), 3);
+			}
 				// for (size_t y=0;y<mid_lines_final[k].size();++y)
 				// {
 				// 	line(image, Point(mid_lines_final[k][y][0],mid_lines_final[k][y][1]),  Point(mid_lines_final[k][y][2],mid_lines_final[k][y][3]), Scalar(255,255,255), 3);
 				// }
-				cout<<"j" <<j<<" "<<"k"<<" "<<k<<" "<<"slope"<<slope_1*180/3.14<<" "<<slope_2*180/3.14<<" "<<abs(intercepts[j]-intercepts[k])<<endl;
+				//cout<<"j" <<j<<" "<<"k"<<" "<<k<<" "<<"slope"<<slope_1*180/3.14<<" "<<slope_2*180/3.14<<" "<<abs(intercepts[j]-intercepts[k])<<endl;
 				s=max(params[j],params[k]);
 				distance=abs(intercepts[j]-intercepts[k])/sqrt(1+s*s);
 				//cout<<mid_lines_final[k][0][1]-(slope_1*minx+intercepts[j]-distance)<<endl;
 				//cout<<abs(mid_lines_final[k][0][1]-slope_1*minx+intercepts[j]-distance)<<endl;
 				float dd= check_for_error(mid_lines_final[k][0][1],min(slope_1,slope_2)*minx+intercepts[j]-distance, min(slope_1, slope_2)*mid_lines_final[j][0][0]+intercepts[j] ) ;
-				//line(image, Point(minx,slope_1*minx+intercepts[j]-dd), Point(maxx,slope_1*maxx+intercepts[j]-dd), Scalar(255,255,255), 3);
-				cout<<"distance"<<" "<<dd<<endl;
+				if (slope_1*minx+intercepts[j]-dd>image.rows)
+					{
+						//cout<<"cool"<<endl;
+						line(image, Point(minx,image.rows), Point(maxx,image.rows), Scalar(255,255,255), 3);
+
+					}
+				line(image, Point(minx,slope_1*minx+intercepts[j]-dd), Point(maxx,slope_1*maxx+intercepts[j]-dd), Scalar(255,0,0), 3);
+				//cout<<"distance"<<" "<<dd<<endl;
 				//float slope_perp = -1/max(slope_1, slope_2);
 				//line(image, Point((minx+maxx)/2, slope_perp*(minx+maxx)/2), Point((minx+maxx)/2, slope_perp*(minx+maxx)/2-distance), Scalar(255,255,255), 3);
 			}
 				// DRAWING PERPENDICULAR LINES
 				if(abs(slope_1-slope_2)<=0.9 && slope_2*180/3.14>80)
 				{
-					//cout<<"found"<<endl;
-				// for (size_t y=0;y<mid_lines_final[j].size();++y)
-				// {
-				// 	line(image, Point(mid_lines_final[j][y][0],mid_lines_final[j][y][1]),  Point(mid_lines_final[j][y][2],mid_lines_final[j][y][3]), Scalar(255,255,255), 3);
-				// }
+				//cout<<"found"<<endl;
 				//cout<<mid_lines_final[j][0][0]<<" "<<slope_1*mid_lines_final[j][0][0]+intercepts[j]<<" "<<mid_lines_final[j][1][2]<<" "<<slope_1*mid_lines_final[j][1][2]+intercepts[j]<<endl;
-				//line(image, Point(mid_lines_final[j][0][0], slope_1*mid_lines_final[j][0][0]+intercepts[j]), Point(mid_lines_final[j][1][2], slope_1*mid_lines_final[j][1][2]+intercepts[j]), Scalar(0,0,255), 2);
+				line(image, Point(mid_lines_final[j][0][0], slope_1*mid_lines_final[j][0][0]+intercepts[j]), Point(mid_lines_final[j][1][2], slope_1*mid_lines_final[j][1][2]+intercepts[j]), Scalar(0,0,255), 2);
 				//finding minimum and maximum x coordinates of lines
-					float miny=image.rows, maxy=0.0;
-				for (int h=0;h<mid_lines_final[k].size();++h)
-				{
-						if(miny>mid_lines_final[k][h][0])
-						{
-							miny=mid_lines_final[k][h][0];
-						}
-				}
-				for (int h=0;h<mid_lines_final[k].size();++h)
-				{
-						if(maxy<mid_lines_final[k][h][0])
-						{
-							maxy=mid_lines_final[k][h][0];
-						}
-				}
 				float minx1=image.cols, maxx1=0.0;
 				for (int h=0;h<mid_lines_final[k].size();++h)
 				{
@@ -384,10 +379,10 @@ Mat detect_ParkingSLots(Mat image)
 							maxx1=mid_lines_final[k][h][0];
 						}
 				}
-				cout<<max(slope_2, slope_1)*minx1+intercepts[k]<<" "<<max(slope_2, slope_1)*maxx1+intercepts[k]<<endl;
+				//cout<<max(slope_2, slope_1)*minx1+intercepts[k]<<" "<<max(slope_2, slope_1)*maxx1+intercepts[k]<<endl;
 				//line(image, Point(minx1, miny), Point(minx1, maxy), Scalar(255,255,255), 3);
 				Point p1,p2;
-				line(img, Point(minx1, max(slope_2, slope_1)*minx1+intercepts[k]), Point(maxx1, max(slope_2, slope_1)*maxx1+intercepts[k]), Scalar(255,255,2552), 3);
+				line(image, Point(minx1, max(slope_2, slope_1)*minx1+intercepts[k]), Point(maxx1, max(slope_2, slope_1)*maxx1+intercepts[k]), Scalar(255,255,252), 3);
 				if(max(slope_2, slope_1)*minx1+intercepts[k]> image.rows)
 				{
 					p1.x= minx1;
@@ -400,14 +395,98 @@ Mat detect_ParkingSLots(Mat image)
 				}
 				line(img,p1, p2, Scalar(255,255,255),3);
 			}
-		}
+		 }
 	}
+	// New Code
+	if (frame<=9)
+	{
+		//cout<<"pushing back"<<endl;
+		frames.push_back(img);
+	}
+	//cout<<"size of frames"<<frames.size()<<endl;
 	///cout<<"Number of parking slot "<<" "<<number_parking_slot<<endl;
-	imshow("image", img);
+	//imshow("image", img);
 	// imshow("gray", gray);
 	// imshow("thresh", thresh);
 	//imshow("canny", canny);
 	return img;
+}
+///////////      README PLEASE
+///////////      THIS FUNCTION IS DIEING TO BE READ
+///////////		 Mr. Ritesh Goru DO SOME KINDNESS TO THIS FUNCTION
+void compare_frames(vector<Mat> images)
+{
+	Mat res,final1,final2, final3, final4, final5, final6; 
+	if(images.size()>=7)
+	{
+		bitwise_or(images[0],images[1], res);
+		bitwise_or(images[2], res, final1);
+		bitwise_or(images[3], final1, final2);
+		bitwise_or(images[4], final2, final3);
+		bitwise_or(images[5], final3, final4);
+		bitwise_or(images[6], final4, final5);
+	}
+// 	vector<Mat> canny;
+// 	Mat c;
+// 	Mat final_img(images[0].rows,images[0].cols, CV_8UC3, Scalar::all(0));
+// 	Mat img(images[0].rows,images[0].cols, CV_8UC3, Scalar::all(0));
+// 	for(int i=0;i<images.size();++i)
+// 	{
+// 		Canny(images[i], c,100, 300,3);
+// 		canny.push_back(c);
+// 		//cout<<"canny made"<<endl;
+// 	}
+// 	vector<Vec4i> temp;
+// 	vector<Vec4i> temp_lines;
+// 	vector<Vec4i> final_lines;
+// 	vector<vector<Vec4i> > lines;
+// 	for (int i=0;i<images.size();++i)
+// 	{
+// 		HoughLinesP(canny[i],  temp, 1, CV_PI / 180, 7, 10, 10);
+// 		lines.push_back(temp);
+// 	}
+// 	for(int h=0;h<lines.size();++h)
+// 	{
+// 		for(int u=0;u<lines[h].size();++u)
+// 		{
+// 			temp_lines.push_back(lines[h][u]);
+// 		}
+// 	}
+// 	// for (int y=0;y<temp_lines.size();++y)
+// 	// {
+// 	// 	Vec4i t=temp_lines[y];
+// 	// 	line(img, Point(t[0], t[1]), Point(t[2], t[3]), Scalar(255,255,255), 1);
+// 	// }
+// 	if(temp_lines.size()>0)
+// 	{
+// 	for (int i=0;i<temp_lines.size();++i)
+// 	{
+// 		float slope= find_slope(temp_lines[i]);
+// 		final_lines.push_back(temp_lines[i]);
+// 		for(int j=i+1;j<temp_lines.size();++j)
+// 		{
+// 			float slope2= find_slope(temp_lines[j]);
+// 			if(slope==slope2)
+// 			{
+// 				final_lines.push_back(temp_lines[j]);
+// 				temp_lines.erase(temp_lines.begin()+j);
+// 				j=i;
+// 			}
+// 		}
+// 	}
+// }
+// cout<<"lines.size()"<<final_lines.size()<<endl;
+//  if(final_lines.size()>=3)
+//  {
+//  	for (int i=0;i<final_lines.size();++i)
+//  	{
+//  		Vec4i fl=final_lines[i];
+//  		line(img, Point(fl[0], fl[1]), Point(fl[2],fl[3]), Scalar(255,255,255), 3);
+//  	}
+//  }
+imshow("final_lines", final5);
+
+// 	//imshow("final_parking.jpg",img);
 }
 //Input: Grayscale of IPM image
 //Output: Binary image containing lane candidate points
@@ -504,7 +583,7 @@ void parking_box(const sensor_msgs::ImageConstPtr& msg){
                 }
         }
 
-    cv::imshow("Gray",gray);
+   // cv::imshow("Gray",gray);
     waitKey(1);
     //To check if we get an image
     if(gray.rows>0){
@@ -529,7 +608,6 @@ cout<<"o"<<" "<<endl;
 cout<<"p"<<endl;
         createTrackbar("area",WINDOW, &area, 100);
         area = getTrackbarPos("area",WINDOW);
-
         for (int i = 0; i < contour_area_threshold.size(); ++i)
         {
             if (contourArea(contour_area_threshold[i]) >= area)
@@ -542,7 +620,11 @@ cout<<"p"<<endl;
        	Mat  Parking_image=detect_ParkingSLots(Final_Parking_Filter);
         //sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", Parking_image ).toImageMsg();
        	imshow("image_parking", Parking_image);
-		//msg.data= detect_ParkingSLots(Final_Parking_Filter);
+       	if(frames.size()==9)
+       	{
+       	//cout<<"comparing_frames"<<endl;
+       	compare_frames(frames);
+       	}		//msg.data= detect_ParkingSLots(Final_Parking_Filter);
         //sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", Final_Parking_Filter).toImageMsg();
         //pub.publish(msg);
         //Occupancy grid is of size 200X400 where 20 pixels corresponds to 1metre
@@ -573,8 +655,15 @@ int main(int argc, char **argv)
     while(ros::ok())
     {   
         ros::spinOnce();
-
-	loop_rate.sleep();
-    }
+        frame=frame+1;
+        //cout<<"number of frames"<<frame<<endl;
+        if (frame==9)
+        {
+        	frame=0;
+        	//cout<<"clearing frames"<<endl;
+        	frames.clear();
+        }
+	loop_rate.sleep()
+;    }
     ROS_INFO("parking");
 }
