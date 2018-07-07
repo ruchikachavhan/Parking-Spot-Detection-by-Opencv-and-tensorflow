@@ -2,7 +2,6 @@ import tensorflow as tf
 import cv2
 import numpy as np
 import os
-import tensorflow.contrib.slim as slim  # TensorFlow-Slim
 
 # Number of classes=3(right, left,up)
 # Defining training examples and labels
