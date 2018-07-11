@@ -82,16 +82,21 @@ sess= tf.Session()
 weights1 = tf.get_variable(initializer=tf.truncated_normal([13*13*64, 1000], stddev=0.03), name='weights1')
 b1= tf.get_variable(initializer= tf.truncated_normal([1000], stddev=0.01), name='b1')
 dense_layer1 =tf.add( tf.matmul(flattened, weights1), b1)
-dense_layer1 = tf.nn.relu(dense_layer1)
 #Layer2
 net = tf.nn.dropout(dense_layer1, 0.5)
-weights2 = tf.get_variable(initializer=tf.truncated_normal([1000, 2], stddev=0.03), name='weights2')
-b2 = tf.get_variable(initializer= tf.truncated_normal([2], stddev=0.01), name='b2')
+weights2 = tf.get_variable(initializer=tf.truncated_normal([1000, 200], stddev=0.03), name='weights2')
+b2 = tf.get_variable(initializer= tf.truncated_normal([200], stddev=0.01), name='b2')
 dense_layer2 = tf.add(tf.matmul(net, weights2), b2)
-y_ = tf.nn.softmax(dense_layer2)
+#Layer3
+# net = tf.nn.dropout(dense_layer2, 0.5)
+weights3= tf.get_variable(initializer=tf.truncated_normal([200, 2], stddev=0.03), name='weights3')
+b3 = tf.get_variable(initializer= tf.truncated_normal([2], stddev=0.01), name='b3')
+dense_layer3 = tf.add(tf.matmul(dense_layer2, weights3), b3)
+dense_layer3= tf.nn.relu(dense_layer3)
+y_ = tf.nn.softmax(dense_layer3)
 #Calculating cross- entropy
 # print("dense_layer2",tf.transpose(dense_layer2))
-cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=dense_layer2, labels=y))
+cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=dense_layer3, labels=y))
 optimiser = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cross_entropy)
 sess= tf.InteractiveSession()
 sess.run(tf.global_variables_initializer())
@@ -145,22 +150,22 @@ save_path= saver.save(sess, '/home/ruchika/parking-spot/model.ckpt')
 #Integrating with big image to detect occupied and empty parking lots
 image_test= cv2.imread('4.jpeg', 0)
 print(image_test.shape)
-for row in range(0, image_test.shape[0], 16):
-	for col in range(0, image_test.shape[1], 16):
-		# if(row+16<image_test.shape[0] & col+16<image_test.shape[1]):
-		test_small= image_test[row:row+16, col:col+16]
+for row in range(0, image_test.shape[0], 50):
+	for col in range(0, image_test.shape[1], 50):
+		# if(row+50<image_test.shape[0] & col+50<image_test.shape[1]):
+		test_small= image_test[row:row+50, col:col+50]
 		print(test_small.shape)
 		test_small= cv2.resize(test_small, (50,50))
 		result=sess.run(y_, feed_dict={x:test_small})
 		print(row)
 		print(col)
-		print(row+16)
-		print(col+16)
+		print(row+50)
+		print(col+50)
 		print(result)
 		if(result[0][0]>=0.7):
-			cv2.line(image_test, (col, row), (col, row+16), (0,0,255), 2)
-			cv2.line(image_test, (col, row+16), (col+16, row+16), (0,0,255), 2)
-			cv2.line(image_test, (col+16, row+16), (col+16, row), (0,0,255), 2)
-			cv2.line(image_test, (col+16, row), (col, row), (0,0,255), 2)
+			cv2.line(image_test, (col, row), (col, row+50), (0,0,255), 2)
+			cv2.line(image_test, (col, row+50), (col+50, row+50), (0,0,255), 2)
+			cv2.line(image_test, (col+50, row+50), (col+50, row), (0,0,255), 2)
+			cv2.line(image_test, (col+50, row), (col, row), (0,0,255), 2)
 cv2.imshow('win', image_test)
 cv2.waitKey(0)
