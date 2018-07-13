@@ -14,7 +14,7 @@ Image used for testing:
 
 ![4](https://user-images.githubusercontent.com/32021556/42588861-8f98b1ce-852e-11e8-8a02-93189fbf7ea7.jpeg)
 
-Result:
+Result:-
 
 
 ![selection_042](https://user-images.githubusercontent.com/32021556/42588914-b5a2ccc4-852e-11e8-9b02-a4f73240a641.png)
